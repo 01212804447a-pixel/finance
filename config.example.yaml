@@ -1,0 +1,46 @@
+# Скопируйте в config.yaml и заполните. config.yaml не попадает в git.
+
+symbols: [EURUSD, GBPUSD, USDJPY]   # суффиксы брокера подставятся автоматически
+timeframe: H1                       # M5 M15 M30 H1 H4 D1
+magic: 770077                       # метка сделок бота; ручные сделки он не трогает
+poll_seconds: 10
+deviation_points: 20
+
+account:
+  # Можно не заполнять, если терминал MT5 уже открыт и вы в нём залогинены.
+  # Пароль лучше задать переменной окружения ALFA_PASSWORD.
+  login: null
+  password: null
+  server: null            # точное имя сервера из окна входа MT5 Альфа-Форекс
+  terminal_path: null     # например "C:/Program Files/Alfa-Forex MetaTrader 5/terminal64.exe"
+  allow_real: false       # ЗАЩИТА: false = бот откажется торговать на реальном счёте
+
+strategy:
+  ema_fast: 20
+  ema_slow: 50
+  ema_trend: 200
+  adx_min: 20
+  sl_atr: 1.5
+  tp_atr: 3.0
+  breakeven_atr: 1.0
+  trail_atr: 1.5
+  exit_on_opposite: true
+
+risk:
+  risk_per_trade_pct: 1.0       # риск на сделку, % средств
+  max_daily_loss_pct: 3.0       # дневной стоп: закрыть всё и не торговать до завтра
+  max_total_drawdown_pct: 15.0  # аварийная остановка бота
+  max_open_positions: 3
+  max_spread_points: 30
+  max_lot: 1.0
+
+schedule:                       # время UTC (Москва = UTC+3)
+  trade_start_hour_utc: 6
+  trade_end_hour_utc: 20
+  no_new_trades_friday_after_utc: 18
+  close_all_friday_utc: 20
+
+telegram:                       # уведомления и команды /status /pause /resume /closeall
+  enabled: false
+  token: null                   # или переменная окружения TG_TOKEN
+  chat_id: null                 # или TG_CHAT_ID
