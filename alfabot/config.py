@@ -37,6 +37,21 @@ class TelegramConfig:
 
 
 @dataclass
+class WebConfig:
+    url: str = "https://trade.alfaforex.ru/terminal"
+    mode: str = "paper"                 # paper — виртуальные сделки, live — настоящие ордера
+    headless: bool = True               # false — видно окно браузера
+    profile_dir: str = "browser_profile"
+    comment_tag: str = "alfabot"        # метка сделок бота в поле «Комментарий»
+    data_source: str = "yahoo"          # yahoo | local (свечи из котировок терминала)
+    contract_size: float = 100000.0     # размер лота для валютных пар
+    contract_sizes: dict = field(default_factory=lambda: {"XAUUSD": 100, "XAGUSD": 5000})
+    volume_min: float = 0.01
+    volume_step: float = 0.01
+    paper_balance: float | None = None  # None — стартовый баланс = средства реального счёта
+
+
+@dataclass
 class BotConfig:
     symbols: list[str] = field(default_factory=lambda: ["EURUSD", "GBPUSD", "USDJPY"])
     timeframe: str = "H1"
@@ -50,6 +65,7 @@ class BotConfig:
     risk: RiskParams = field(default_factory=RiskParams)
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
+    web: WebConfig = field(default_factory=WebConfig)
 
 
 def _build(cls, data: dict | None):
@@ -69,6 +85,7 @@ def load_config(path: str | os.PathLike) -> BotConfig:
         "risk": RiskParams,
         "schedule": ScheduleConfig,
         "telegram": TelegramConfig,
+        "web": WebConfig,
     }
     kwargs = {k: v for k, v in raw.items() if k not in nested}
     for key, cls in nested.items():
@@ -80,6 +97,10 @@ def load_config(path: str | os.PathLike) -> BotConfig:
     acc.login = int(os.environ["ALFA_LOGIN"]) if os.environ.get("ALFA_LOGIN") else acc.login
     acc.password = os.environ.get("ALFA_PASSWORD", acc.password)
     acc.server = os.environ.get("ALFA_SERVER", acc.server)
+    if os.environ.get("BOT_MODE"):
+        cfg.web.mode = os.environ["BOT_MODE"]
+    if cfg.web.mode not in ("paper", "live"):
+        raise ValueError("web.mode должен быть paper или live")
     tg = cfg.telegram
     tg.token = os.environ.get("TG_TOKEN", tg.token)
     tg.chat_id = os.environ.get("TG_CHAT_ID", tg.chat_id)

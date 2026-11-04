@@ -1,19 +1,31 @@
-# Скопируйте в config.yaml и заполните. config.yaml не попадает в git.
+# Скопируйте в config.yaml. config.yaml не попадает в git.
+# Логин/пароль и токен Telegram удобнее держать в файле .env (см. .env.example).
 
 symbols: [EURUSD, GBPUSD, USDJPY]   # суффиксы брокера подставятся автоматически
 timeframe: H1                       # M5 M15 M30 H1 H4 D1
 magic: 770077                       # метка сделок бота; ручные сделки он не трогает
-poll_seconds: 10
+poll_seconds: 15
 deviation_points: 20
+state_file: data/state.json
+log_file: logs/bot.log
+
+web:                          # браузерный режим (run_web.py) — MetaTrader 5 не нужен
+  url: https://trade.alfaforex.ru/terminal
+  mode: paper                 # paper — виртуальные сделки по реальным котировкам; live — настоящие ордера
+  headless: true              # false — показать окно браузера
+  profile_dir: data/browser_profile
+  comment_tag: alfabot        # метка сделок бота; сделки без неё бот не трогает
+  data_source: yahoo          # yahoo — история свечей с Yahoo Finance; local — только свои свечи
+  paper_balance: null         # null — стартовый виртуальный баланс = средства счёта
 
 account:
-  # Можно не заполнять, если терминал MT5 уже открыт и вы в нём залогинены.
-  # Пароль лучше задать переменной окружения ALFA_PASSWORD.
+  # Логин/пароль лучше задать в .env (ALFA_LOGIN / ALFA_PASSWORD).
+  # Для программы MT5 (run_bot.py) можно не заполнять, если терминал уже залогинен.
   login: null
   password: null
   server: null            # точное имя сервера из окна входа MT5 Альфа-Форекс
   terminal_path: null     # например "C:/Program Files/Alfa-Forex MetaTrader 5/terminal64.exe"
-  allow_real: false       # ЗАЩИТА: false = бот откажется торговать на реальном счёте
+  allow_real: false       # ЗАЩИТА: пока false, настоящие ордера на реальном счёте не отправляются
 
 strategy:
   ema_fast: 20

@@ -11,9 +11,11 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
 if (-not (Test-Path ".venv")) { python -m venv .venv }
 & .\.venv\Scripts\python.exe -m pip install --upgrade pip
 & .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+& .\.venv\Scripts\python.exe -m playwright install chromium
+if (-not (Test-Path ".env")) { Copy-Item .env.example .env }
 
 if (-not (Test-Path "config.yaml")) {
     Copy-Item config.example.yaml config.yaml
     Write-Host "Создан config.yaml — откройте и проверьте настройки." -ForegroundColor Yellow
 }
-Write-Host "Готово. Проверка подключения: .\.venv\Scripts\python.exe check_connection.py" -ForegroundColor Green
+Write-Host "Готово. Впишите логин/пароль в .env и проверьте: .\.venv\Scripts\python.exe run_web.py --check" -ForegroundColor Green

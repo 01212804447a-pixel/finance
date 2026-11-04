@@ -1,0 +1,11 @@
+services:
+  alfabot:
+    build: .
+    container_name: alfabot
+    restart: unless-stopped        # перезапуск после сбоя и после перезагрузки сервера
+    env_file: .env                 # ALFA_LOGIN, ALFA_PASSWORD, TG_TOKEN, TG_CHAT_ID, BOT_MODE
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./data:/app/data           # состояние, свечи, профиль браузера
+      - ./logs:/app/logs
+    shm_size: "512mb"              # Chromium в Docker нужна разделяемая память

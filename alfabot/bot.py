@@ -74,8 +74,9 @@ class TradingBot:
         for name in self.cfg.symbols:
             self.symbols[name] = self.broker.resolve_symbol(name)
         info = self.broker.account()
+        kind = getattr(self.broker, "label", None) or ("ДЕМО" if demo else "РЕАЛЬНЫЙ")
         self.notifier.send(
-            f"🤖 Бот запущен ({'ДЕМО' if demo else 'РЕАЛЬНЫЙ'} счёт {info.login}). "
+            f"🤖 Бот запущен ({kind} счёт {info.login}). "
             f"Средства: {info.equity:.2f} {info.currency}. "
             f"Инструменты: {', '.join(self.symbols.values())}, ТФ {self.cfg.timeframe}."
         )
@@ -96,6 +97,9 @@ class TradingBot:
             except Exception as e:
                 log.exception("ошибка цикла: %s", e)
                 self.notifier.send(f"⚠️ Ошибка: {e}. Переподключение через {backoff} c")
+                shot = getattr(self.broker, "screenshot", lambda: None)()
+                if shot:
+                    self.notifier.send_photo(shot, "Экран терминала в момент ошибки")
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 300)
                 try:
@@ -149,7 +153,9 @@ class TradingBot:
             price = tick.bid if pos.side > 0 else tick.ask
             new_sl = trailing_stop(side, pos.price_open, pos.sl or (
                 pos.price_open - 1e9 if pos.side > 0 else pos.price_open + 1e9), price, atr_value, p)
-            if new_sl is not None and abs(price - new_sl) >= min_dist:
+            # двигаем стоп шагами не меньше 0.1 ATR, чтобы не дёргать брокера каждую секунду
+            big_enough = not pos.sl or abs(new_sl - pos.sl) >= 0.1 * atr_value if new_sl is not None else False
+            if new_sl is not None and big_enough and abs(price - new_sl) >= min_dist:
                 self.broker.modify_sl(pos, new_sl)
                 log.info("%s #%s стоп -> %.5f", sym, pos.ticket, new_sl)
 
@@ -245,12 +251,23 @@ class TradingBot:
             elif cmd == "/resume":
                 self.paused = False
                 self.notifier.send("▶️ Торговля возобновлена")
+            elif cmd == "/screenshot":
+                shot = getattr(self.broker, "screenshot", lambda: None)()
+                if shot:
+                    self.notifier.send_photo(shot, "Терминал сейчас")
+                else:
+                    self.notifier.send("Скриншот доступен только в браузерном режиме")
+            elif cmd == "/stats":
+                stats = getattr(self.broker, "stats", None)
+                self.notifier.send(stats() if stats else self.status_text())
             elif cmd == "/closeall":
                 self.paused = True
                 self.close_all("команда /closeall")
                 self.notifier.send("Все позиции бота закрыты, бот на паузе (/resume — продолжить)")
             else:
-                self.notifier.send("Команды: /status /pause /resume /closeall")
+                self.notifier.send("Команды:\n/status — баланс и позиции\n/pause — не открывать новые сделки\n"
+                                   "/resume — продолжить\n/closeall — закрыть всё и пауза\n"
+                                   "/screenshot — снимок терминала\n/stats — статистика")
 
     def _daily_report(self, now: datetime, acc) -> None:
         if now.hour != 21 or self._last_report_day == now.date():

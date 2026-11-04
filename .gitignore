@@ -8,3 +8,7 @@ __pycache__/
 .venv/
 .pytest_cache/
 *.csv
+data/
+browser_profile/
+paper_state.json
+bars/

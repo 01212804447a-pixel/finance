@@ -31,8 +31,21 @@ class Notifier:
         except Exception as e:  # уведомления не должны ронять бота
             log.warning("telegram send failed: %s", e)
 
+    def send_photo(self, png: bytes | None, caption: str = "") -> None:
+        if not (self.enabled and png):
+            return
+        try:
+            requests.post(
+                f"https://api.telegram.org/bot{self.token}/sendPhoto",
+                data={"chat_id": self.chat_id, "caption": caption[:1000]},
+                files={"photo": ("terminal.png", png, "image/png")},
+                timeout=30,
+            )
+        except Exception as e:
+            log.warning("telegram photo failed: %s", e)
+
     def poll_commands(self) -> list[str]:
-        """Команды из разрешённого чата: /status /pause /resume /closeall."""
+        """Команды из разрешённого чата (/status /pause /resume /closeall /screenshot /stats)."""
         if not self.enabled:
             return []
         try:
