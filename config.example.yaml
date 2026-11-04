@@ -28,6 +28,8 @@ account:
   allow_real: false       # ЗАЩИТА: пока false, настоящие ордера на реальном счёте не отправляются
 
 strategy:
+  name: rsi2_d1               # rsi2_d1 (по умолчанию) | momentum_12m | ema_cross — см. README
+  # параметры ниже относятся только к ema_cross; у дневных стратегий стопы заданы в alfabot/strategies.py
   ema_fast: 20
   ema_slow: 50
   ema_trend: 200

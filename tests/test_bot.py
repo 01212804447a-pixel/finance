@@ -6,23 +6,27 @@ from alfabot.bot import TradingBot
 from alfabot.broker import MT5Broker
 from alfabot.config import BotConfig
 from alfabot.notifier import Notifier
-from alfabot.strategy import compute
+from alfabot.strategies import get as get_strategy
 from tests.helpers import FakeMT5, synthetic_bars
 
 MONDAY_NOON = datetime(2026, 1, 5, 12, tzinfo=timezone.utc)
 
 
-def make_bot(tmp_path, bars, trade_mode=0, allow_real=False, clock=MONDAY_NOON):
+def make_bot(tmp_path, bars, trade_mode=0, allow_real=False, clock=MONDAY_NOON, strategy="ema_cross"):
     cfg = BotConfig(symbols=["EURUSD"], state_file=str(tmp_path / "state.json"))
+    cfg.strategy.name = strategy
+    cfg.timeframe = get_strategy(strategy).timeframe
     cfg.account.allow_real = allow_real
     fake = FakeMT5(bars, trade_mode=trade_mode)
     bot = TradingBot(cfg, MT5Broker(fake, cfg.magic), Notifier(False, None, None), clock=lambda: clock)
     return bot, fake
 
 
-def bars_ending_with_signal(sig_value):
-    df = synthetic_bars(4000)
-    data = compute(df, BotConfig().strategy)
+def bars_ending_with_signal(sig_value, strategy="ema_cross", freq="h"):
+    df = synthetic_bars(4000, freq=freq)
+    cfg = BotConfig()
+    cfg.strategy.name = strategy
+    data = get_strategy(strategy).compute(df, cfg.strategy)
     pos = [i for i, s in enumerate(data["signal"]) if s == sig_value and i > 700][0]
     # +1 бар — он будет «текущим незакрытым» и отбросится
     return df.iloc[: pos + 2]
@@ -114,4 +118,34 @@ def test_skipped_signal_is_reported(tmp_path):
     bot.notifier.send = sent.append
     bot.start(); bot.step()
     assert not fake.requests
-    assert any("пропущен" in m and "вне торгового окна" in m for m in sent)
+    assert any("отложен" in m and "вне торгового окна" in m for m in sent)
+
+
+def test_d1_signal_waits_for_trading_window_and_holds_over_weekend(tmp_path):
+    """Дневной сигнал появляется ночью: бот ждёт открытия окна, входит один раз и держит через выходные."""
+    bars = bars_ending_with_signal(1, "rsi2_d1", freq="D")
+    now = {"t": datetime(2026, 1, 6, 1, tzinfo=timezone.utc)}          # вторник, 01:00 UTC — ночь
+    cfg_bot, fake = make_bot(tmp_path, bars, strategy="rsi2_d1", clock=lambda: now["t"])
+    bot = cfg_bot
+    bot.clock = lambda: now["t"]
+    sent = []
+    bot.notifier.send = sent.append
+    bot.start(); bot.step()
+    assert not fake.requests and any("отложен" in m for m in sent)
+    now["t"] = now["t"].replace(hour=7)                                 # открылось окно
+    bot.step()
+    opens = [r for r in fake.requests if r["action"] == fake.TRADE_ACTION_DEAL]
+    assert len(opens) == 1 and opens[0]["tp"] == 0                      # без тейка: выход по сигналу
+    fake._positions.clear()                                             # сработал стоп
+    bot.step()
+    assert len([r for r in fake.requests if r["action"] == fake.TRADE_ACTION_DEAL]) == 1  # без повторного входа
+    bot.broker.open("EURUSD", 1, 0.1, 1.0, 0.0)
+    now["t"] = datetime(2026, 1, 9, 21, tzinfo=timezone.utc)            # пятница вечер
+    bot.step()
+    assert fake.positions_get()                                         # дневная стратегия держит позицию
+
+
+def test_momentum_strategy_runs(tmp_path):
+    bot, fake = make_bot(tmp_path, synthetic_bars(800, freq="D"), strategy="momentum_12m")
+    bot.start(); bot.step()
+    assert "12 мес" in bot.market_text()

@@ -61,6 +61,7 @@ class BotConfig:
     deviation_points: int = 20
     state_file: str = "state.json"
     log_file: str = "logs/bot.log"
+    lab: bool = True                 # лаборатория стратегий: еженедельный рейтинг в Telegram
     account: AccountConfig = field(default_factory=AccountConfig)
     strategy: StrategyParams = field(default_factory=StrategyParams)
     risk: RiskParams = field(default_factory=RiskParams)
@@ -108,6 +109,10 @@ def load_config(path: str | os.PathLike) -> BotConfig:
     for key, cls in nested.items():
         kwargs[key] = _build(cls, raw.get(key))
     cfg = _build(BotConfig, kwargs)
+    from .strategies import get as get_strategy
+    info = get_strategy(cfg.strategy.name)          # проверка имени стратегии
+    if info.name != "ema_cross":
+        cfg.timeframe = info.timeframe              # дневные стратегии всегда на D1
 
     # секреты можно держать в переменных окружения, а не в файле
     acc = cfg.account

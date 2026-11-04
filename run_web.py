@@ -87,8 +87,13 @@ def main() -> None:
         check(cfg)
         return
     broker, _ = build(cfg)
-    notifier = Notifier(cfg.telegram.enabled, cfg.telegram.token, cfg.telegram.chat_id)
-    TradingBot(cfg, broker, notifier).run_forever()
+    notifier = Notifier(cfg.telegram.enabled, cfg.telegram.token, cfg.telegram.chat_id,
+                        outbox_dir=str(Path(cfg.state_file).parent / "outbox"))
+    bot = TradingBot(cfg, broker, notifier)
+    if cfg.lab:
+        from alfabot.lab import StrategyLab
+        bot.lab = StrategyLab(str(Path(cfg.state_file).parent / "lab_state.json"))
+    bot.run_forever()
 
 
 if __name__ == "__main__":

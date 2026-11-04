@@ -50,8 +50,12 @@ def main() -> None:
             spread = b.spread_points(sym) * b.symbol_info(sym).point
         b.shutdown()
 
-    res = run_backtest(df, cfg.strategy, spec, start_equity=args.equity,
-                       risk_pct=cfg.risk.risk_per_trade_pct, spread=spread, max_lot=cfg.risk.max_lot)
+    from alfabot.strategies import effective_params, get as get_strategy
+    info = get_strategy(cfg.strategy.name)
+    print(f"Стратегия: {info.title}")
+    res = run_backtest(df, effective_params(cfg.strategy), spec, start_equity=args.equity,
+                       risk_pct=cfg.risk.risk_per_trade_pct, spread=spread, max_lot=cfg.risk.max_lot,
+                       compute_fn=info.compute)
     print(f"Баров: {len(df)}  период: {df.index[0]} — {df.index[-1]}")
     for k, v in res.stats().items():
         print(f"  {k}: {v}")

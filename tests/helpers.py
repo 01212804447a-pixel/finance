@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 
-def synthetic_bars(n=3000, seed=1, start=1.10):
+def synthetic_bars(n=3000, seed=1, start=1.10, freq="h"):
     rng = np.random.default_rng(seed)
     # чередующиеся трендовые режимы + шум
     drift = np.repeat(rng.choice([-1, 1], size=n // 250 + 1), 250)[:n] * 0.00012
@@ -15,7 +15,7 @@ def synthetic_bars(n=3000, seed=1, start=1.10):
     spread = np.abs(rng.normal(0, 0.0006, n))
     high = np.maximum(open_, close) + spread
     low = np.minimum(open_, close) - spread
-    idx = pd.date_range("2024-01-01", periods=n, freq="h", tz="UTC")
+    idx = pd.date_range("2024-01-01" if freq == "h" else "2014-01-01", periods=n, freq=freq, tz="UTC")
     return pd.DataFrame({"open": open_, "high": high, "low": low, "close": close}, index=idx)
 
 
@@ -34,6 +34,7 @@ class FakeMT5:
     ORDER_FILLING_RETURN = 2
     TRADE_RETCODE_DONE = 10009
     TIMEFRAME_H1 = 16385
+    TIMEFRAME_D1 = 16408
 
     def __init__(self, bars: pd.DataFrame, trade_mode=0, equity=10000.0):
         self.bars = bars

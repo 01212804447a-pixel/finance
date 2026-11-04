@@ -38,8 +38,13 @@ def main() -> None:
         sys.exit("Нужен пакет MetaTrader5 (только Windows): pip install MetaTrader5")
 
     broker = MT5Broker(mt5, magic=cfg.magic, deviation=cfg.deviation_points)
-    notifier = Notifier(cfg.telegram.enabled, cfg.telegram.token, cfg.telegram.chat_id)
-    TradingBot(cfg, broker, notifier).run_forever()
+    notifier = Notifier(cfg.telegram.enabled, cfg.telegram.token, cfg.telegram.chat_id,
+                        outbox_dir=str(Path(cfg.state_file).parent / "outbox"))
+    bot = TradingBot(cfg, broker, notifier)
+    if cfg.lab:
+        from alfabot.lab import StrategyLab
+        bot.lab = StrategyLab(str(Path(cfg.state_file).parent / "lab_state.json"))
+    bot.run_forever()
 
 
 if __name__ == "__main__":

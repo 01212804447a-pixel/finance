@@ -65,13 +65,23 @@ def write_config(cfg: dict) -> None:
                            encoding="utf-8")
 
 
+STRATEGY_TITLES = {
+    "rsi2_d1": "RSI(2) возврат к среднему, дневки (рекомендуется)",
+    "momentum_12m": "Импульс 12 месяцев, дневки",
+    "ema_cross": "Пересечение EMA, часовки (старая, самая убыточная)",
+}
+
+
 def apply_settings(cfg: dict, *, symbols: str, risk: float, orders: bool, allow_real: bool,
-                   show_browser: bool, telegram_on: bool, hourly: bool = True) -> dict:
+                   show_browser: bool, telegram_on: bool, hourly: bool = True,
+                   strategy: str | None = None) -> dict:
     """orders — отправлять ордера в терминал (иначе бумажный режим);
     allow_real — разрешить это на НЕ демо-счёте (реальные деньги)."""
     cfg = dict(cfg)
     cfg["symbols"] = [s.strip().upper() for s in symbols.replace(";", ",").split(",") if s.strip()]
     cfg.setdefault("risk", {})["risk_per_trade_pct"] = float(risk)
+    if strategy:
+        cfg.setdefault("strategy", {})["name"] = strategy
     cfg.setdefault("account", {})["allow_real"] = bool(allow_real)
     cfg["account"]["login"] = None
     cfg["account"]["password"] = None
@@ -233,6 +243,12 @@ def run_gui() -> None:
     section("3. Торговля")
     v_symbols = field("Валютные пары:", ", ".join(cfg.get("symbols", ["EURUSD", "GBPUSD", "USDJPY"])))
     v_risk = field("Риск на сделку, % от счёта:", str((cfg.get("risk") or {}).get("risk_per_trade_pct", 1.0)))
+    cur_strategy = (cfg.get("strategy") or {}).get("name") or "rsi2_d1"
+    ttk.Label(frm, text="Стратегия:").grid(row=row, column=0, sticky="w", **pad)
+    v_strategy = tk.StringVar(value=STRATEGY_TITLES.get(cur_strategy, STRATEGY_TITLES["rsi2_d1"]))
+    ttk.Combobox(frm, textvariable=v_strategy, values=list(STRATEGY_TITLES.values()), state="readonly").grid(
+        row=row, column=1, columnspan=2, sticky="ew", **pad)
+    row += 1
     acc_cfg = cfg.get("account") or {}
     v_mode = tk.StringVar(value="live" if env.get("BOT_MODE") == "live" else "paper")
     ttk.Label(frm, text="Режим:").grid(row=row, column=0, sticky="w", **pad)
@@ -247,7 +263,7 @@ def run_gui() -> None:
                     variable=v_real).grid(row=row, column=1, columnspan=2, sticky="w", padx=10)
     row += 1
     v_hourly = tk.BooleanVar(value=(cfg.get("telegram") or {}).get("hourly_report", True))
-    ttk.Checkbutton(frm, text="Каждый час присылать в Telegram, что бот видит на рынке",
+    ttk.Checkbutton(frm, text="Присылать в Telegram отчёт после каждой свечи (что бот видит на рынке)",
                     variable=v_hourly).grid(row=row, column=1, columnspan=2, sticky="w", padx=10)
     row += 1
     v_show = tk.BooleanVar(value=not (cfg.get("web") or {}).get("headless", True))
@@ -299,7 +315,8 @@ def run_gui() -> None:
         token, chat = v_token.get().strip(), v_chat.get().strip()
         write_env({"ALFA_LOGIN": login, "ALFA_PASSWORD": v_pass.get(), "TG_TOKEN": token,
                    "TG_CHAT_ID": chat, "BOT_MODE": "live" if orders else "paper"})
-        write_config(apply_settings(read_config(), symbols=v_symbols.get(), risk=risk, orders=orders,
+        strategy = next((k for k, v in STRATEGY_TITLES.items() if v == v_strategy.get()), "rsi2_d1")
+        write_config(apply_settings(read_config(), symbols=v_symbols.get(), risk=risk, orders=orders, strategy=strategy,
                                     allow_real=allow_real, show_browser=v_show.get(),
                                     telegram_on=bool(token and chat), hourly=v_hourly.get()))
         set_autostart(v_auto.get())

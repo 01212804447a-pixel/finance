@@ -39,3 +39,13 @@ def test_orders_and_real_money_are_separate(tmp_path, monkeypatch):
     assert cfg["account"]["allow_real"] is True
     assert cfg["account"]["password"] is None  # пароль только в .env
     yaml.safe_dump(cfg)
+
+
+def test_strategy_choice_sets_timeframe(tmp_path, monkeypatch):
+    monkeypatch.setattr(sw, "CONFIG_FILE", tmp_path / "config.yaml")
+    for name, tf in (("rsi2_d1", "D1"), ("momentum_12m", "D1"), ("ema_cross", "H1")):
+        sw.write_config(sw.apply_settings(sw.read_config(), symbols="EURUSD", risk=1, orders=False,
+                                          allow_real=False, show_browser=False, telegram_on=False,
+                                          strategy=name))
+        c = load_config(tmp_path / "config.yaml")
+        assert c.strategy.name == name and c.timeframe == tf

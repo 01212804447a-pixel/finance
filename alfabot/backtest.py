@@ -97,12 +97,12 @@ def run_backtest(df: pd.DataFrame, p: StrategyParams, spec: SymbolSpec, *,
             if pos.side > 0:
                 if l <= pos.sl:
                     close(pos, min(pos.sl, o), idx[i], "стоп"); pos = None
-                elif h >= pos.tp:
+                elif pos.tp and h >= pos.tp:
                     close(pos, pos.tp, idx[i], "тейк"); pos = None
             else:
                 if h + spread >= pos.sl:
                     close(pos, max(pos.sl, o + spread), idx[i], "стоп"); pos = None
-                elif l + spread <= pos.tp:
+                elif pos.tp and l + spread <= pos.tp:
                     close(pos, pos.tp, idx[i], "тейк"); pos = None
 
         # решения на закрытии бара

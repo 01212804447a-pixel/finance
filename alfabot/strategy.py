@@ -21,6 +21,7 @@ class Signal(IntEnum):
 
 @dataclass
 class StrategyParams:
+    name: str = "rsi2_d1"        # стратегия из alfabot/strategies.py: rsi2_d1 | momentum_12m | ema_cross
     ema_fast: int = 20
     ema_slow: int = 50
     ema_trend: int = 200
@@ -31,9 +32,9 @@ class StrategyParams:
     rsi_oversold: float = 30.0
     atr_period: int = 14
     sl_atr: float = 1.5          # стоп-лосс = 1.5 ATR
-    tp_atr: float = 3.0          # тейк-профит = 3 ATR (соотношение 1:2)
-    breakeven_atr: float = 1.0   # перенос стопа в безубыток после +1 ATR
-    trail_atr: float = 1.5       # трейлинг-стоп на расстоянии 1.5 ATR
+    tp_atr: float = 3.0          # тейк-профит = 3 ATR (соотношение 1:2; 0 — без тейка)
+    breakeven_atr: float = 1.0   # перенос стопа в безубыток после +1 ATR (0 — выключено)
+    trail_atr: float = 1.5       # трейлинг-стоп на расстоянии 1.5 ATR (0 — выключено)
     exit_on_opposite: bool = True
 
     @property
@@ -82,10 +83,11 @@ def last_closed_signal(df: pd.DataFrame, p: StrategyParams) -> tuple[Signal, pd.
 
 
 def stop_levels(side: Signal, entry: float, atr_value: float, p: StrategyParams) -> tuple[float, float]:
+    tp_dist = p.tp_atr * atr_value
     if side == Signal.BUY:
-        return entry - p.sl_atr * atr_value, entry + p.tp_atr * atr_value
+        return entry - p.sl_atr * atr_value, (entry + tp_dist) if p.tp_atr > 0 else 0.0
     if side == Signal.SELL:
-        return entry + p.sl_atr * atr_value, entry - p.tp_atr * atr_value
+        return entry + p.sl_atr * atr_value, (entry - tp_dist) if p.tp_atr > 0 else 0.0
     raise ValueError("нет направления")
 
 
@@ -101,7 +103,7 @@ def trailing_stop(side: Signal, entry: float, current_sl: float, price: float,
     if side == Signal.BUY:
         profit = price - entry
         candidate = current_sl
-        if profit + eps >= p.breakeven_atr * atr_value:
+        if p.breakeven_atr > 0 and profit + eps >= p.breakeven_atr * atr_value:
             candidate = max(candidate, entry)
         if p.trail_atr > 0 and profit + eps >= p.trail_atr * atr_value:
             candidate = max(candidate, price - p.trail_atr * atr_value)
@@ -109,7 +111,7 @@ def trailing_stop(side: Signal, entry: float, current_sl: float, price: float,
     if side == Signal.SELL:
         profit = entry - price
         candidate = current_sl
-        if profit + eps >= p.breakeven_atr * atr_value:
+        if p.breakeven_atr > 0 and profit + eps >= p.breakeven_atr * atr_value:
             candidate = min(candidate, entry)
         if p.trail_atr > 0 and profit + eps >= p.trail_atr * atr_value:
             candidate = min(candidate, price + p.trail_atr * atr_value)
