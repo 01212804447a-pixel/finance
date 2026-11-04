@@ -62,6 +62,11 @@ def check(cfg) -> None:
 
 
 def main() -> None:
+    for stream in (sys.stdout, sys.stderr):  # эмодзи и кириллица в консоли Windows
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     ap = argparse.ArgumentParser(description="AlfaBot через веб-терминал")
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--check", action="store_true", help="проверить вход и данные, ничего не торговать")

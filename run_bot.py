@@ -12,6 +12,11 @@ from alfabot.notifier import Notifier
 
 
 def main() -> None:
+    for stream in (sys.stdout, sys.stderr):  # эмодзи и кириллица в консоли Windows
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     ap = argparse.ArgumentParser(description="AlfaBot для MetaTrader 5")
     ap.add_argument("--config", default="config.yaml")
     args = ap.parse_args()

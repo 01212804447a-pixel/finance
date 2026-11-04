@@ -77,7 +77,23 @@ def _build(cls, data: dict | None):
     return cls(**data)
 
 
+def load_dotenv(path: str | os.PathLike) -> None:
+    """Читает файл .env (КЛЮЧ=значение) в переменные окружения, не перезаписывая уже заданные."""
+    p = Path(path)
+    if not p.exists():
+        return
+    for line in p.read_text(encoding="utf-8-sig").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key, value = key.strip(), value.strip().strip('"').strip("'")
+        if key and value and key not in os.environ:
+            os.environ[key] = value
+
+
 def load_config(path: str | os.PathLike) -> BotConfig:
+    load_dotenv(Path(path).resolve().parent / ".env")
     raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     nested = {
         "account": AccountConfig,

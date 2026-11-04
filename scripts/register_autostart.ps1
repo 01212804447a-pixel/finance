@@ -4,7 +4,7 @@
 param([switch]$Mt5)   # -Mt5: запускать бота для программы MT5 вместо браузерного
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$bat  = Join-Path $root ($(if ($Mt5) { "scripts\start_bot.bat" } else { "scripts\start_web.bat" }))
+$bat  = Join-Path $root ($(if ($Mt5) { "scripts\start_bot.bat" } else { "3-start.bat" }))
 
 $action   = New-ScheduledTaskAction -Execute $bat -WorkingDirectory $root
 $trigger  = New-ScheduledTaskTrigger -AtLogOn
