@@ -65,20 +65,23 @@ def write_config(cfg: dict) -> None:
                            encoding="utf-8")
 
 
-def apply_settings(cfg: dict, *, symbols: str, risk: float, live: bool, show_browser: bool,
-                   telegram_on: bool) -> dict:
+def apply_settings(cfg: dict, *, symbols: str, risk: float, orders: bool, allow_real: bool,
+                   show_browser: bool, telegram_on: bool, hourly: bool = True) -> dict:
+    """orders — отправлять ордера в терминал (иначе бумажный режим);
+    allow_real — разрешить это на НЕ демо-счёте (реальные деньги)."""
     cfg = dict(cfg)
     cfg["symbols"] = [s.strip().upper() for s in symbols.replace(";", ",").split(",") if s.strip()]
     cfg.setdefault("risk", {})["risk_per_trade_pct"] = float(risk)
-    cfg.setdefault("account", {})["allow_real"] = bool(live)
+    cfg.setdefault("account", {})["allow_real"] = bool(allow_real)
     cfg["account"]["login"] = None
     cfg["account"]["password"] = None
     web = cfg.setdefault("web", {})
-    web["mode"] = "live" if live else "paper"
+    web["mode"] = "live" if orders else "paper"
     web["headless"] = not show_browser
     web.setdefault("url", "https://trade.alfaforex.ru/terminal")
     tg = cfg.setdefault("telegram", {})
     tg["enabled"] = bool(telegram_on)
+    tg["hourly_report"] = bool(hourly)
     tg["token"] = None
     tg["chat_id"] = None
     return cfg
@@ -144,7 +147,7 @@ def run_gui() -> None:
     cfg = read_config()
     root = tk.Tk()
     root.title("AlfaBot — настройка")
-    root.geometry("720x760")
+    root.geometry("760x840")
     pad = {"padx": 10, "pady": 4}
 
     frm = ttk.Frame(root)
@@ -230,14 +233,22 @@ def run_gui() -> None:
     section("3. Торговля")
     v_symbols = field("Валютные пары:", ", ".join(cfg.get("symbols", ["EURUSD", "GBPUSD", "USDJPY"])))
     v_risk = field("Риск на сделку, % от счёта:", str((cfg.get("risk") or {}).get("risk_per_trade_pct", 1.0)))
-    live_now = (env.get("BOT_MODE") == "live") and bool((cfg.get("account") or {}).get("allow_real"))
-    v_mode = tk.StringVar(value="live" if live_now else "paper")
+    acc_cfg = cfg.get("account") or {}
+    v_mode = tk.StringVar(value="live" if env.get("BOT_MODE") == "live" else "paper")
     ttk.Label(frm, text="Режим:").grid(row=row, column=0, sticky="w", **pad)
-    ttk.Radiobutton(frm, text="Бумажный — сделки виртуальные, без риска (для начала)",
+    ttk.Radiobutton(frm, text="Бумажный — сделки виртуальные, в терминал не отправляются",
                     variable=v_mode, value="paper").grid(row=row, column=1, columnspan=2, sticky="w", padx=10)
     row += 1
-    ttk.Radiobutton(frm, text="Реальный — настоящие деньги",
+    ttk.Radiobutton(frm, text="Ордера на счёт — бот открывает сделки в терминале",
                     variable=v_mode, value="live").grid(row=row, column=1, columnspan=2, sticky="w", padx=10)
+    row += 1
+    v_real = tk.BooleanVar(value=bool(acc_cfg.get("allow_real")))
+    ttk.Checkbutton(frm, text="Разрешить реальные деньги (нужно только если счёт НЕ демо)",
+                    variable=v_real).grid(row=row, column=1, columnspan=2, sticky="w", padx=10)
+    row += 1
+    v_hourly = tk.BooleanVar(value=(cfg.get("telegram") or {}).get("hourly_report", True))
+    ttk.Checkbutton(frm, text="Каждый час присылать в Telegram, что бот видит на рынке",
+                    variable=v_hourly).grid(row=row, column=1, columnspan=2, sticky="w", padx=10)
     row += 1
     v_show = tk.BooleanVar(value=not (cfg.get("web") or {}).get("headless", True))
     ttk.Checkbutton(frm, text="Показывать окно браузера (видно, что делает бот)", variable=v_show).grid(
@@ -275,22 +286,27 @@ def run_gui() -> None:
         except Exception:
             messagebox.showerror("Ошибка", "Риск — число от 0.1 до 5 (например 1).")
             return False
-        live = v_mode.get() == "live"
-        if live and not quiet and not messagebox.askyesno(
-                "Реальные деньги",
-                "Вы включаете торговлю РЕАЛЬНЫМИ деньгами.\n\n"
-                "Бот будет сам открывать и закрывать сделки на вашем счёте. Прибыль не гарантирована, "
-                "возможны убытки.\n\nРекомендуем сначала 2–4 недели бумажного режима.\n\nВключить?"):
-            v_mode.set("paper")
-            live = False
+        orders = v_mode.get() == "live"
+        allow_real = v_real.get()
+        if allow_real and not bool(read_config().get("account", {}).get("allow_real")):
+            if not messagebox.askyesno(
+                    "Реальные деньги",
+                    "Вы разрешаете боту торговать РЕАЛЬНЫМИ деньгами (если счёт не демо).\n\n"
+                    "Бот будет сам открывать и закрывать сделки. Прибыль не гарантирована, возможны убытки.\n"
+                    "На истории 2024–2026 текущая стратегия была убыточной.\n\nРазрешить?"):
+                v_real.set(False)
+                allow_real = False
         token, chat = v_token.get().strip(), v_chat.get().strip()
         write_env({"ALFA_LOGIN": login, "ALFA_PASSWORD": v_pass.get(), "TG_TOKEN": token,
-                   "TG_CHAT_ID": chat, "BOT_MODE": "live" if live else "paper"})
-        write_config(apply_settings(read_config(), symbols=v_symbols.get(), risk=risk, live=live,
-                                    show_browser=v_show.get(), telegram_on=bool(token and chat)))
+                   "TG_CHAT_ID": chat, "BOT_MODE": "live" if orders else "paper"})
+        write_config(apply_settings(read_config(), symbols=v_symbols.get(), risk=risk, orders=orders,
+                                    allow_real=allow_real, show_browser=v_show.get(),
+                                    telegram_on=bool(token and chat), hourly=v_hourly.get()))
         set_autostart(v_auto.get())
-        log(f"Сохранено: режим {'РЕАЛЬНЫЙ' if live else 'бумажный'}, Telegram "
-            f"{'включён' if token and chat else 'не настроен'}.")
+        mode = "бумажный" if not orders else ("ордера на счёт, реальные деньги РАЗРЕШЕНЫ" if allow_real
+                                             else "ордера на счёт (только демо-счёт)")
+        if not quiet:
+            log(f"Сохранено: {mode}; Telegram {'включён' if token and chat else 'не настроен'}.")
         return True
 
     def run_check():
@@ -306,8 +322,14 @@ def run_gui() -> None:
             lines = [l for l in (p.stdout + p.stderr).splitlines() if l.strip()]
             text = "\n".join(lines[-12:])
             ok = p.returncode == 0 and "Счёт" in p.stdout
-            root.after(0, lambda: log(text + ("\n✅ Вход работает. Нажмите «Запустить бота»."
-                                              if ok else "\n❌ Не получилось — см. текст выше.")))
+            msg = text + ("\n✅ Вход работает. Нажмите «Запустить бота»." if ok
+                          else "\n❌ Не получилось — см. текст выше.")
+            if ok and "ДЕМО" in p.stdout:
+                msg += ("\nℹ Ваш счёт ДЕМО (деньги виртуальные): можно выбрать «Ордера на счёт» — "
+                        "сделки бота будут видны прямо в терминале.")
+            elif ok and "РЕАЛЬНЫЙ" in p.stdout:
+                msg += "\n⚠ Это РЕАЛЬНЫЙ счёт: оставьте бумажный режим, пока не убедитесь в результатах."
+            root.after(0, lambda: log(msg))
         threading.Thread(target=work, daemon=True).start()
 
     def start_bot():
@@ -356,13 +378,14 @@ def run_console() -> None:
     print("\n3. Торговля")
     symbols = ask("Валютные пары", ", ".join(cfg.get("symbols", ["EURUSD", "GBPUSD", "USDJPY"])))
     risk = float(ask("Риск на сделку, %", "1").replace(",", "."))
-    live = ask("Режим: 1 — бумажный (без риска), 2 — реальные деньги", "1") == "2"
-    if live and ask("Точно торговать РЕАЛЬНЫМИ деньгами? Напишите ДА", "") != "ДА":
-        live = False
+    orders = ask("Режим: 1 — бумажный, 2 — ордера на счёт", "1") == "2"
+    allow_real = False
+    if orders and ask("Разрешить РЕАЛЬНЫЕ деньги (если счёт не демо)? Напишите ДА", "") == "ДА":
+        allow_real = True
     write_env({"ALFA_LOGIN": login, "ALFA_PASSWORD": pwd, "TG_TOKEN": token, "TG_CHAT_ID": chat,
-               "BOT_MODE": "live" if live else "paper"})
-    write_config(apply_settings(cfg, symbols=symbols, risk=risk, live=live, show_browser=False,
-                                telegram_on=bool(token and chat)))
+               "BOT_MODE": "live" if orders else "paper"})
+    write_config(apply_settings(cfg, symbols=symbols, risk=risk, orders=orders, allow_real=allow_real,
+                                show_browser=False, telegram_on=bool(token and chat)))
     print(f"\nСохранено в {ENV_FILE.name} и {CONFIG_FILE.name}. Проверка: python run_web.py --check")
 
 

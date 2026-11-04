@@ -34,6 +34,7 @@ class TelegramConfig:
     enabled: bool = False
     token: str | None = None
     chat_id: str | None = None
+    hourly_report: bool = True     # раз в час (в торговые часы) писать, что бот видит на рынке
 
 
 @dataclass

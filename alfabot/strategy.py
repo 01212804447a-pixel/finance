@@ -69,6 +69,8 @@ def compute(df: pd.DataFrame, p: StrategyParams) -> pd.DataFrame:
     out["signal"] = sig
     out["cross_up"] = cross_up
     out["cross_down"] = cross_down
+    out["exit_long"] = cross_down if p.exit_on_opposite else False
+    out["exit_short"] = cross_up if p.exit_on_opposite else False
     return out
 
 

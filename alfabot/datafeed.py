@@ -86,6 +86,9 @@ class YahooFeed:
             raise DataError(f"Yahoo HTTP {r.status_code}")
         df = parse_yahoo(r.json())
         minutes = TF_MINUTES[timeframe]
+        step = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "60m": 60}.get(interval)
+        if step:  # убрать «живую» строку Yahoo с нестандартным временем (например 15:21:26)
+            df = df[(df.index.second == 0) & ((df.index.hour * 60 + df.index.minute) % step == 0)]
         if timeframe == "H4":
             df = resample(df, 240)
         df = drop_unclosed(df, minutes)

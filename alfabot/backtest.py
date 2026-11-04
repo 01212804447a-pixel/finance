@@ -56,8 +56,8 @@ class BacktestResult:
 
 def run_backtest(df: pd.DataFrame, p: StrategyParams, spec: SymbolSpec, *,
                  start_equity: float = 10_000.0, risk_pct: float = 1.0,
-                 spread: float = 0.0, max_lot: float = 100.0) -> BacktestResult:
-    data = compute(df, p)
+                 spread: float = 0.0, max_lot: float = 100.0, compute_fn=None) -> BacktestResult:
+    data = (compute_fn or compute)(df, p)
     equity = start_equity
     curve = []
     trades: list[Trade] = []
@@ -112,7 +112,7 @@ def run_backtest(df: pd.DataFrame, p: StrategyParams, spec: SymbolSpec, *,
             new_sl = trailing_stop(side, pos.entry, pos.sl, price, bar["atr"], p)
             if new_sl is not None:
                 pos.sl = new_sl
-            if p.exit_on_opposite and ((pos.side > 0 and bar["cross_down"]) or (pos.side < 0 and bar["cross_up"])):
+            if (pos.side > 0 and bar["exit_long"]) or (pos.side < 0 and bar["exit_short"]):
                 pending_exit = True
         sig = Signal(int(bar["signal"]))
         if sig != Signal.NONE and (pos is None or pending_exit):

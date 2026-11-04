@@ -92,3 +92,26 @@ def test_state_persists(tmp_path):
     assert bot2.last_bar == bot.last_bar
     bot2.start(); bot2.step()
     assert not fake2.requests  # тот же бар уже обработан
+
+
+def test_market_text_and_hourly_report(tmp_path):
+    sent = []
+    bot, fake = make_bot(tmp_path, synthetic_bars(800))
+    bot.notifier.send = sent.append
+    bot.start(); bot.step()
+    txt = bot.market_text()
+    assert "EURUSD" in txt and "тренд" in txt and "жду" in txt
+    assert any("Закрылась свеча" in m for m in sent)      # отчёт после новой свечи
+    n = len(sent)
+    bot.step()                                             # та же свеча — повторного отчёта нет
+    assert not any("Закрылась свеча" in m for m in sent[n:])
+
+
+def test_skipped_signal_is_reported(tmp_path):
+    sent = []
+    night = datetime(2026, 1, 5, 23, tzinfo=timezone.utc)
+    bot, fake = make_bot(tmp_path, bars_ending_with_signal(1), clock=night)
+    bot.notifier.send = sent.append
+    bot.start(); bot.step()
+    assert not fake.requests
+    assert any("пропущен" in m and "вне торгового окна" in m for m in sent)

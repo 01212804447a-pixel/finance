@@ -50,8 +50,10 @@ def check(cfg) -> None:
                 s = market.resolve_symbol(name)
                 t = market.tick(s)
                 bars = market.closed_bars(s, cfg.timeframe, 400)
+                sp = market.spec(s)
+                pip_value = sp.tick_value * 10   # 1 пункт = 10 минимальных шагов цены
                 print(f"  {name} -> {s}: bid {t.bid} ask {t.ask}, свечей {cfg.timeframe}: {len(bars)}, "
-                      f"последняя {bars.index[-1]}")
+                      f"последняя {bars.index[-1]}; 1 пункт при 1 лоте = {pip_value:.2f} {acc.currency}")
             except Exception as e:
                 print(f"  {name}: ОШИБКА {e}")
         Path("logs").mkdir(exist_ok=True)

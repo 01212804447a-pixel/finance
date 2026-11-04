@@ -78,8 +78,8 @@ class FakeMT5:
 
     def copy_rates_from_pos(self, sym, tf, start, count):
         df = self.bars.tail(count).reset_index()
-        df["time"] = df["index" if "index" in df else "time"].astype("int64") // 10**9 \
-            if "time" not in df else df["time"].astype("int64") // 10**9
+        tcol = "time" if "time" in df else "index"
+        df["time"] = (df[tcol] - pd.Timestamp("1970-01-01", tz="UTC")) // pd.Timedelta("1s")
         return df[["time", "open", "high", "low", "close"]].to_records(index=False)
 
     def positions_get(self, symbol=None):

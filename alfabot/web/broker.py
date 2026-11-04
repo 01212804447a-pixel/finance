@@ -128,6 +128,15 @@ class WebBroker:
                 return 1.0 / mid if invert else mid
             except TerminalError:
                 continue
+        # запасной вариант — курс с Yahoo Finance
+        for pair, invert in ((f"{quote_ccy}{acc}", False), (f"{acc}{quote_ccy}", True)):
+            try:
+                df = self.feed.yahoo.bars(pair, "D1")
+                rate = float(df["close"].iloc[-1])
+                log.info("курс %s взят с Yahoo: %s", pair, rate)
+                return 1.0 / rate if invert else rate
+            except Exception:
+                continue
         raise BrokerError(f"не найден курс {quote_ccy}->{acc} для расчёта объёма")
 
     def spec(self, symbol: str) -> SymbolSpec:

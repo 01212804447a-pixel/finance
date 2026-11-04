@@ -15,8 +15,8 @@ def test_wizard_writes_env_and_config(tmp_path, monkeypatch):
     sw.write_env({"ALFA_LOGIN": "123", "ALFA_PASSWORD": "p=ss#1", "TG_TOKEN": "t:k",
                   "TG_CHAT_ID": "42", "BOT_MODE": "paper"})
     assert sw.read_env()["ALFA_PASSWORD"] == "p=ss#1"
-    cfg = sw.apply_settings(sw.read_config(), symbols="eurusd; gbpusd", risk=0.5, live=False,
-                            show_browser=True, telegram_on=True)
+    cfg = sw.apply_settings(sw.read_config(), symbols="eurusd; gbpusd", risk=0.5, orders=False,
+                            allow_real=False, show_browser=True, telegram_on=True)
     sw.write_config(cfg)
 
     c = load_config(tmp_path / "config.yaml")     # .env рядом подхватывается автоматически
@@ -29,10 +29,13 @@ def test_wizard_writes_env_and_config(tmp_path, monkeypatch):
         os.environ.pop(k, None)
 
 
-def test_live_requires_both_flags(tmp_path, monkeypatch):
+def test_orders_and_real_money_are_separate(tmp_path, monkeypatch):
     monkeypatch.setattr(sw, "CONFIG_FILE", tmp_path / "config.yaml")
-    cfg = sw.apply_settings(sw.read_config(), symbols="EURUSD", risk=1, live=True,
+    cfg = sw.apply_settings(sw.read_config(), symbols="EURUSD", risk=1, orders=True, allow_real=False,
                             show_browser=False, telegram_on=False)
-    assert cfg["web"]["mode"] == "live" and cfg["account"]["allow_real"] is True
+    assert cfg["web"]["mode"] == "live" and cfg["account"]["allow_real"] is False
+    cfg = sw.apply_settings(cfg, symbols="EURUSD", risk=1, orders=True, allow_real=True,
+                            show_browser=False, telegram_on=False)
+    assert cfg["account"]["allow_real"] is True
     assert cfg["account"]["password"] is None  # пароль только в .env
     yaml.safe_dump(cfg)

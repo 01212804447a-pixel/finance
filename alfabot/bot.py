@@ -33,6 +33,8 @@ class TradingBot:
         self.paused = False
         self.symbols: dict[str, str] = {}   # имя из конфига -> имя у брокера
         self._last_report_day = None
+        self.market: dict[str, tuple[str, object]] = {}
+        self._last_errors: dict[str, str] = {}   # символ -> (время свечи, строка индикаторов)
         self._load_state()
 
     # ---------- состояние ----------
@@ -127,15 +129,26 @@ class TradingBot:
                 self.close_all("закрытие перед выходными")
                 self.notifier.send("📅 Позиции закрыты перед выходными")
 
+        new_bars = []
         for name, sym in self.symbols.items():
             try:
-                self._process_symbol(sym, now)
+                if self._process_symbol(sym, now):
+                    new_bars.append(sym)
             except BrokerError as e:
                 log.warning("%s: %s", sym, e)
+                key = f"{sym}: {e}"
+                if self._last_errors.get(sym) != key:   # одна и та же ошибка — одно сообщение
+                    self._last_errors[sym] = key
+                    self.notifier.send(f"⚠️ {key}")
+            else:
+                self._last_errors.pop(sym, None)
+        if new_bars and self.cfg.telegram.hourly_report and self._in_trading_hours(now):
+            self.notifier.send(self.market_text(f"🕐 Закрылась свеча {self.cfg.timeframe}, проверил рынок:"))
         self._daily_report(now, acc)
         self._save_state()
 
-    def _process_symbol(self, sym: str, now: datetime) -> None:
+    def _process_symbol(self, sym: str, now: datetime) -> bool:
+        """Возвращает True, если обработана новая закрытая свеча."""
         p = self.cfg.strategy
         bars = self.broker.closed_bars(sym, self.cfg.timeframe, p.min_bars + 300)
         data = compute(bars, p)
@@ -143,6 +156,7 @@ class TradingBot:
         bar_time = str(data.index[-1])
         new_bar = self.last_bar.get(sym) != bar_time
         atr_value = float(row["atr"])
+        self.market[sym] = (bar_time, row)
         positions = self.broker.positions(sym)
 
         # 1) сопровождение открытых позиций: безубыток и трейлинг
@@ -160,14 +174,14 @@ class TradingBot:
                 log.info("%s #%s стоп -> %.5f", sym, pos.ticket, new_sl)
 
         if not new_bar:
-            return
+            return False
         self.last_bar[sym] = bar_time
         signal = Signal(int(row["signal"]))
 
         # 2) выход по противоположному пересечению
-        if p.exit_on_opposite:
+        if True:
             for pos in positions:
-                opposite = (pos.side > 0 and bool(row["cross_down"])) or (pos.side < 0 and bool(row["cross_up"]))
+                opposite = (pos.side > 0 and bool(row["exit_long"])) or (pos.side < 0 and bool(row["exit_short"]))
                 if opposite:
                     self.broker.close(pos, "alfabot exit")
                     self.notifier.send(f"↩️ {sym}: закрыта #{pos.ticket} по обратному сигналу, P/L {pos.profit:.2f}")
@@ -175,28 +189,63 @@ class TradingBot:
 
         # 3) вход
         if signal == Signal.NONE or positions:
-            return
+            return True
         reason = self._entry_blocked(sym, now)
         if reason:
             log.info("%s: сигнал %s пропущен — %s", sym, signal.name, reason)
-            return
+            self.notifier.send(f"⏭ {sym}: сигнал {signal.name} пропущен — {reason}")
+            return True
         tick = self.broker.tick(sym)
         entry = tick.ask if signal == Signal.BUY else tick.bid
         sl, tp = stop_levels(signal, entry, atr_value, p)
         if abs(entry - sl) < min_dist:
             log.info("%s: стоп ближе минимального уровня брокера", sym)
-            return
+            return True
         equity = self.broker.account().equity
         lots = position_size(equity, self.cfg.risk.risk_per_trade_pct, abs(entry - sl),
                              self.broker.spec(sym), self.cfg.risk.max_lot)
         if lots <= 0:
             log.info("%s: объём слишком мал для заданного риска", sym)
-            return
+            self.notifier.send(f"⏭ {sym}: сигнал пропущен — минимальный лот больше допустимого риска")
+            return True
         self.broker.open(sym, int(signal), lots, sl, tp)
         self.notifier.send(
             f"{'🟢 BUY' if signal == Signal.BUY else '🔴 SELL'} {sym} {lots} лот по {entry:.5f}, "
             f"SL {sl:.5f}, TP {tp:.5f} (риск {self.cfg.risk.risk_per_trade_pct}%)"
         )
+        return True
+
+    def _in_trading_hours(self, now: datetime) -> bool:
+        s = self.cfg.schedule
+        return now.weekday() < 5 and s.trade_start_hour_utc <= now.hour < s.trade_end_hour_utc
+
+    def market_text(self, header: str = "📈 Рынок сейчас:") -> str:
+        """Что бот видит по каждой паре и чего ждёт для входа."""
+        p = self.cfg.strategy
+        lines = [header]
+        if not self.market:
+            return header + "\nданных ещё нет — подождите минуту после запуска"
+        open_syms = {x.symbol for x in self.broker.positions()}
+        for sym, (bar_time, r) in self.market.items():
+            close, fast, slow, trend = r["close"], r["ema_fast"], r["ema_slow"], r["ema_trend"]
+            up, above = close > trend, fast > slow
+            adx_ok = r["adx"] >= p.adx_min
+            if sym in open_syms:
+                wait = "есть открытая сделка, сопровождаю её"
+            elif up and not above:
+                wait = f"тренд вверх → жду пересечения EMA{p.ema_fast} вверх для ПОКУПКИ"
+            elif not up and above:
+                wait = f"тренд вниз → жду пересечения EMA{p.ema_fast} вниз для ПРОДАЖИ"
+            elif up and above:
+                wait = "тренд вверх, но пересечение уже было → жду отката и нового пересечения"
+            else:
+                wait = "тренд вниз, пересечение уже было → жду отскока и нового пересечения"
+            if not adx_ok and sym not in open_syms:
+                wait += f"; сейчас тренд слабый (ADX {r['adx']:.1f} < {p.adx_min:g})"
+            lines.append(f"• {sym}: {close:.5g}, тренд {'↑' if up else '↓'}, ADX {r['adx']:.0f}, "
+                         f"RSI {r['rsi']:.0f} — {wait}")
+        lines.append(f"Свеча: {str(next(iter(self.market.values()))[0])[:16]} UTC")
+        return "\n".join(lines)
 
     def _entry_blocked(self, sym: str, now: datetime) -> str | None:
         if self.paused:
@@ -257,6 +306,8 @@ class TradingBot:
                     self.notifier.send_photo(shot, "Терминал сейчас")
                 else:
                     self.notifier.send("Скриншот доступен только в браузерном режиме")
+            elif cmd == "/market":
+                self.notifier.send(self.market_text())
             elif cmd == "/stats":
                 stats = getattr(self.broker, "stats", None)
                 self.notifier.send(stats() if stats else self.status_text())
@@ -267,7 +318,7 @@ class TradingBot:
             else:
                 self.notifier.send("Команды:\n/status — баланс и позиции\n/pause — не открывать новые сделки\n"
                                    "/resume — продолжить\n/closeall — закрыть всё и пауза\n"
-                                   "/screenshot — снимок терминала\n/stats — статистика")
+                                   "/screenshot — снимок терминала\n/stats — статистика\n/market — что бот видит на рынке")
 
     def _daily_report(self, now: datetime, acc) -> None:
         if now.hour != 21 or self._last_report_day == now.date():
